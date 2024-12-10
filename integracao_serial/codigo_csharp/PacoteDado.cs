@@ -9,11 +9,18 @@ class PacoteDado
     public byte Checksum { get; set; }
     public byte Footer { get; set; }
 
-    public PacoteDado(byte id, string dados)
+    public PacoteDado(byte id, object dados)
     {
         Header = 0xAA;
         Id = id;
-        Dados = string.IsNullOrEmpty(dados) ? [] : Encoding.ASCII.GetBytes(dados); // Preenche os dados como texto ASCII
+        Dados = dados switch
+        {
+            string s => Encoding.ASCII.GetBytes(s),
+            int i => BitConverter.GetBytes(i),
+            bool b => [(byte)(b ? 1 : 0)],
+            float f => BitConverter.GetBytes(f),
+            _ => throw new ArgumentException("Tipo de dado não suportado.")
+        };
         TamanhoDados = (byte)Dados.Length;
         Checksum = CalcularChecksum();
         Footer = 0xFF;
