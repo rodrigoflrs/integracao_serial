@@ -65,8 +65,8 @@ O pacote que estamos enviando e recebendo entre o Arduino e o C# segue uma estru
    - **Valor:** `0xAA` (Este valor é fixo e serve para identificar o início do pacote)
 
 2. **ID**  
-   - **Tamanho:** 1 byte  
-   - **Valor:** Um número de 0 a 255 (geralmente, é usado para identificar o tipo de pacote ou a sequência de pacotes)
+   - **Tamanho:** 2 bytes  
+   - **Valor:** Um número de 0 a 65535 (geralmente, é usado para identificar o tipo de pacote ou a sequência de pacotes)
 
 3. **Tamanho dos dados (Data Length)**  
    - **Tamanho:** 1 byte  

@@ -3,11 +3,11 @@ using System.Text;
 
 class Program
 {
-    private const byte CMD_HELLO = 0x01;
-    private const byte CMD_LED = 0x02;
-    private const byte CMD_INT = 0x03;
-    private const byte CMD_BOOL = 0x04;
-    private const byte CMD_FLOAT = 0x05;
+    private const ushort ID1 = 0x01;
+    private const ushort ID2 = 0x02;
+    private const ushort ID3 = 0x03;
+    private const ushort ID4 = 0x04;
+    private const ushort ID5 = 0x05;
 
     private static readonly int _timeout = 10000;
     private static bool alternarEstado = false;
@@ -22,7 +22,7 @@ class Program
             string opcao = ExibirMenu();
             if (opcao == "6") break;
 
-            ExecutarComando(opcao);
+            ExecutarComandoPorId(opcao);
         }
 
         _serialPort.Close();
@@ -30,7 +30,7 @@ class Program
 
     private static void InicializarPorta()
     {
-        _serialPort = new SerialPort("COM11", 115200); // Alterar nome da porta se necessário
+        _serialPort = new SerialPort("COM13", 115200); // Alterar nome da porta se necessário
         try
         {
             _serialPort.Open();
@@ -54,27 +54,27 @@ class Program
         return Console.ReadLine() ?? "";
     }
 
-    private static void ExecutarComando(string opcao)
+    private static void ExecutarComandoPorId(string opcao)
     {
-        byte comando = opcao switch
+        ushort comando = opcao switch
         {
-            "1" => CMD_LED,
-            "2" => CMD_HELLO,
-            "3" => CMD_INT,
-            "4" => CMD_BOOL,
-            "5" => CMD_FLOAT,
+            "1" => ID1,
+            "2" => ID2,
+            "3" => ID3,
+            "4" => ID4,
+            "5" => ID5,
             _ => throw new ArgumentException("Opção inválida.")
         };
 
-        EnviarComando(comando);
+        EnviarId(comando);
     }
 
-    private static void EnviarComando(byte id)
+    private static void EnviarId(ushort id)
     {
         object dados = GerarDados(id);
         var pacote = new PacoteDado(id, dados);
 
-        Console.WriteLine("Pacote a ser enviado:");
+        Console.WriteLine("Pacote de dados a ser enviado:");
         pacote.ImprimirDetalhes();
 
         EnviarPacote(pacote);
@@ -82,20 +82,20 @@ class Program
         Console.WriteLine($"Resposta do Arduino: {resposta}");
     }
 
-    private static object GerarDados(byte id)
+    private static object GerarDados(ushort id)
     {
-        if (id == CMD_BOOL)
+        if (id == ID4)
         {
             alternarEstado = !alternarEstado;
         }
 
         return id switch
         {
-            CMD_LED => "LED",
-            CMD_HELLO => "HELLO",
-            CMD_INT => 12345,
-            CMD_BOOL => alternarEstado,
-            CMD_FLOAT => 3.14159f,
+            ID1 => "LED",
+            ID2 => "HELLO",
+            ID3 => 12345,
+            ID4 => alternarEstado,
+            ID5 => 3.14159f,
             _ => "Comando genérico"
         };
     }
@@ -119,6 +119,8 @@ class Program
 
                 if (bytesRead >= 5)
                 {
+                    Console.WriteLine($"Bytes lidos: {bytesRead}");
+                    Console.WriteLine($"Conteúdo do buffer: {BitConverter.ToString(buffer, 0, bytesRead)}");
                     return ProcessarPacote(buffer, bytesRead);
                 }
                 else
@@ -137,12 +139,18 @@ class Program
         {
             var pacote = new PacoteDado(buffer[..bytesRead]);
 
-            Console.WriteLine("Pacote recebido:");
+            Console.WriteLine("\nPacote recebido:");
             pacote.ImprimirDetalhes();
 
             if (pacote.Header != 0xAA || pacote.Footer != 0xFF)
             {
                 return "Pacote inválido. Header ou Footer incorretos.";
+            }
+
+            byte checksumCalculado = pacote.CalcularChecksum();
+            if (pacote.Checksum != checksumCalculado)
+            {
+                return $"Checksum inválido. Esperado: 0x{checksumCalculado:X2}, Recebido: 0x{pacote.Checksum:X2}";
             }
 
             return InterpretarResposta(pacote);
@@ -158,9 +166,9 @@ class Program
     {
         return pacote.Id switch
         {
-            CMD_INT => InterpretarInteiro(pacote),
-            CMD_BOOL => InterpretarBooleano(pacote),
-            CMD_FLOAT => InterpretarFloat(pacote),
+            ID3 => InterpretarInteiro(pacote),
+            ID4 => InterpretarBooleano(pacote),
+            ID5 => InterpretarFloat(pacote),
             _ => Encoding.ASCII.GetString(pacote.Dados)
         };
     }
