@@ -4,74 +4,119 @@ class PacoteDado
 {
     public byte Header { get; set; }
     public ushort Id { get; set; }
+    public TipoDado TipoDado { get; set; }
     public byte TamanhoDados { get; set; }
     public byte[] Dados { get; set; }
     public byte Checksum { get; set; }
     public byte Footer { get; set; }
 
-    public PacoteDado(ushort id, object dados)
+
+    public PacoteDado(ushort id, TipoDado tipoDado, object dados)
     {
         Header = 0xAA;
         Id = id;
-        Dados = dados switch
+        TipoDado = tipoDado;
+
+        // Atribuindo os Dados de acordo com o tipo fornecido
+        Dados = tipoDado switch
         {
-            string s => Encoding.ASCII.GetBytes(s),
-            int i => BitConverter.GetBytes(i),
-            bool b => [(byte)(b ? 1 : 0)],
-            float f => BitConverter.GetBytes(f),
+            TipoDado.String => Encoding.ASCII.GetBytes((string)dados),
+            TipoDado.Int32 => BitConverter.GetBytes((int)dados),
+            TipoDado.Bool => new[] { (byte)((bool)dados ? 1 : 0) },
+            TipoDado.Float => BitConverter.GetBytes((float)dados),
             _ => throw new ArgumentException("Tipo de dado não suportado.")
         };
+
         TamanhoDados = (byte)Dados.Length;
         Checksum = CalcularChecksum();
-        Footer = 0xFF;
+        Footer = 0xFF; // Valor fixo para o footer
     }
 
     public PacoteDado(byte[] pacoteRecebido)
     {
-        if (pacoteRecebido.Length >= 6 + pacoteRecebido[3])                         // Verifica se o pacote tem o tamanho suficiente
+        if (pacoteRecebido == null || pacoteRecebido.Length < 7)
         {
-            Header = pacoteRecebido[0];
-            byte[] idBytes = new byte[2] { pacoteRecebido[2], pacoteRecebido[1] };  // ID está em Little Endian
-            Id = BitConverter.ToUInt16(idBytes, 0);                                 // Converte os dois bytes na ordem correta
-            TamanhoDados = pacoteRecebido[3];
-            Dados = new byte[TamanhoDados];
-            Array.Copy(pacoteRecebido, 4, Dados, 0, TamanhoDados);
-            Checksum = pacoteRecebido[pacoteRecebido.Length - 2];
-            Footer = pacoteRecebido[pacoteRecebido.Length - 1];
+            throw new ArgumentException("Pacote inválido: pacote nulo ou muito curto.");
         }
-        else
+
+        // Verifica o comprimento mínimo esperado do pacote
+        int tamanhoEsperado = 7 + pacoteRecebido[4];
+        if (pacoteRecebido.Length < tamanhoEsperado)
         {
-            throw new ArgumentException("Pacote inválido: tamanho incorreto.");
+            throw new ArgumentException(
+                $"Pacote inválido: tamanho incorreto. Esperado: {tamanhoEsperado}, Recebido: {pacoteRecebido.Length}");
+        }
+
+        // Atribui os campos do pacote
+        Header = pacoteRecebido[0];
+        if (Header != 0xAA)
+        {
+            throw new ArgumentException($"Pacote inválido: Header incorreto (Recebido: {Header:X2}).");
+        }
+
+        Id = BitConverter.ToUInt16(pacoteRecebido, 1);
+        TipoDado = (TipoDado)pacoteRecebido[3];
+        TamanhoDados = pacoteRecebido[4];
+
+        Dados = new byte[TamanhoDados];
+        Array.Copy(pacoteRecebido, 5, Dados, 0, TamanhoDados);
+
+        Checksum = pacoteRecebido[pacoteRecebido.Length - 2];
+        Footer = pacoteRecebido[pacoteRecebido.Length - 1];
+        if (Footer != 0xFF)
+        {
+            throw new ArgumentException($"Pacote inválido: Footer incorreto (Recebido: {Footer:X2}).");
+        }
+
+        // Valida o checksum
+        byte checksumCalculado = CalcularChecksum();
+        if (Checksum != checksumCalculado)
+        {
+            throw new ArgumentException(
+                $"Pacote inválido: Checksum incorreto (Esperado: {checksumCalculado:X2}, Recebido: {Checksum:X2}).");
         }
     }
 
     public byte CalcularChecksum()
     {
         byte sum = Header;
-        sum += (byte)(Id & 0xFF);                       // Soma o primeiro byte de Id
-        sum += (byte)((Id >> 8) & 0xFF);                // Soma o segundo byte de Id
-        sum += TamanhoDados;
-        foreach (var b in Dados) sum += b;
-        return (byte)(sum % 256);                       // Garante que o checksum será 1 byte
+
+        // Soma os dois bytes do ID (baixo e alto)
+        sum += (byte)(Id & 0xFF);           // Byte menos significativo
+        sum += (byte)((Id >> 8) & 0xFF);    // Byte mais significativo
+
+        sum += (byte)TipoDado;              // Tipo de dado (enum convertido para byte)
+        sum += TamanhoDados;                // Tamanho dos dados
+
+        // Soma todos os bytes dos dados
+        foreach (var b in Dados)
+        {
+            sum += b;
+        }
+
+        // Aplica módulo 256 para garantir que o checksum seja um byte (0-255)
+        return (byte)(sum % 256);
     }
 
     public byte[] ToByteArray()
     {
-        byte[] pacote = new byte[6 + Dados.Length];     // 6 bytes fixos (Header, ID, Tamanho, Checksum, Footer) + Dados
-        pacote[0] = Header;                             // Header (1 byte)
-        pacote[1] = (byte)(Id & 0xFF);                  // Menos significativo do ID (LSB)
-        pacote[2] = (byte)((Id >> 8) & 0xFF);           // Mais significativo do ID (MSB)
-        pacote[3] = TamanhoDados;                       // Tamanho dos dados
-        Array.Copy(Dados, 0, pacote, 4, Dados.Length);  // Copia os dados para o pacote, começando no índice 4
-        pacote[4 + Dados.Length] = Checksum;            // Checksum (1 byte)
-        pacote[5 + Dados.Length] = Footer;              // Footer (1 byte)
+        byte[] pacote = new byte[7 + Dados.Length];
+        pacote[0] = Header;
+        pacote[1] = (byte)(Id & 0xFF);
+        pacote[2] = (byte)((Id >> 8) & 0xFF);
+        pacote[3] = (byte)TipoDado;
+        pacote[4] = TamanhoDados;
+        Array.Copy(Dados, 0, pacote, 5, Dados.Length);
+        pacote[5 + Dados.Length] = Checksum;
+        pacote[6 + Dados.Length] = Footer;
         return pacote;
     }
 
     public void ImprimirDetalhes()
     {
         Console.WriteLine($"Header: 0x{Header:X2}");
-        Console.WriteLine($"ID: 0x{Id:X2} (Bytes: 0x{(Id & 0xFF):X2} 0x{((Id >> 8) & 0xFF):X2})");
+        Console.WriteLine($"ID: 0x{Id:X2} (Bytes: 0x{Id & 0xFF:X2} 0x{(Id >> 8) & 0xFF:X2})");
+        Console.WriteLine($"Tipo de Dado: {TipoDado}");
         Console.WriteLine($"Tamanho dos Dados: {TamanhoDados}");
         Console.WriteLine($"Dados (Bytes): {(Dados.Length > 0 ? BitConverter.ToString(Dados) : "Nenhum dado")}");
         Console.WriteLine($"Dados (Texto): {(Dados.Length > 0 ? Encoding.ASCII.GetString(Dados) : "Nenhum dado")}");

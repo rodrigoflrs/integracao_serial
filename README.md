@@ -56,65 +56,68 @@ Após carregar o código, o Arduino estará pronto para se comunicar com a aplic
 
 ## **Estrutura do Pacote**
 
-O pacote que estamos enviando e recebendo entre o Arduino e o C# segue uma estrutura bem definida. Essa estrutura pode ser dividida em várias partes, como `Header`, `ID`, `Tamanho dos dados`, `Dados`, `Checksum` e `Footer`.
+O pacote enviado e recebido entre o Hardware e o Software segue uma estrutura bem definida para facilitar a comunicação. Essa estrutura é dividida nas seguintes partes, nessa ordem: `Header`, `ID`, `Tipo de dado`, `Tamanho dos dados`, `Dados (payload)`, `Checksum` e `Footer`.
 
 ### Detalhes da Estrutura:
 
 1. **Header (Início do pacote)**  
    - **Tamanho:** 1 byte  
-   - **Valor:** `0xAA` (Este valor é fixo e serve para identificar o início do pacote)
+   - **Valor:** `0xAA` (Valor fixo para identificar o início do pacote)
 
 2. **ID**  
    - **Tamanho:** 2 bytes  
-   - **Valor:** Um número de 0 a 65535 (geralmente, é usado para identificar o tipo de pacote ou a sequência de pacotes)
+   - **Valor:** Um número de 0 a 65535 (usado para identificar o tipo de pacote ou a sequência de pacotes)
 
-3. **Tamanho dos dados (Data Length)**  
+3. **Tipo de Dado (Data Type)**  
    - **Tamanho:** 1 byte  
-   - **Valor:** Um número que representa o comprimento dos dados que serão enviados no pacote (a quantidade de bytes para o conteúdo principal do pacote)
+   - **Valor:** Um código que identifica o tipo de dado contido no payload. Exemplos:
+     - `0x01`: **Bool**
+     - `0x02`: **Int16**
+     - `0x03`: **Int32**
+     - `0x04`: **Float**
+     - `0x05`: **String**
 
-4. **Dados (Payload)**  
-   - **Tamanho:** Variável (depende do valor de "Tamanho dos dados")  
-   - **Valor:** A informação real que você deseja transmitir (no nosso caso, é a string "mensagem arduino", convertida para bytes). Esse campo pode conter qualquer tipo de dado necessário para a comunicação.
-
-5. **Checksum**  
+4. **Tamanho dos dados (Data Length)**  
    - **Tamanho:** 1 byte  
-   - **Valor:** Uma soma dos bytes de dados (excluindo header, ID e footer) calculada para validar a integridade do pacote.
+   - **Valor:** Quantidade de bytes do campo **Dados (Payload)**
 
-6. **Footer (Fim do pacote)**  
+5. **Dados (Payload)**  
+   - **Tamanho:** Variável (definido pelo campo **Tamanho dos dados**)  
+   - **Valor:** Conteúdo principal do pacote. Pode ser um bool, int, float ou string, conforme indicado pelo campo **Tipo de Dado**.
+
+6. **Checksum**  
    - **Tamanho:** 1 byte  
-   - **Valor:** `0xFF` (Este valor é fixo e serve para identificar o final do pacote)
+   - **Valor:** Soma dos bytes do pacote (excluindo Header e Footer) para validar a integridade.
+
+7. **Footer (Fim do pacote)**  
+   - **Tamanho:** 1 byte  
+   - **Valor:** `0xFF` (Valor fixo para identificar o final do pacote)
 
 ---
 
 ### Exemplo de Pacote
 
-#### Pacote Exemplo (em hex)
+#### Exemplo 1: Pacote Enviando um `Int16` com Valor `1234`
+- **Header:** `0xAA`  
+- **ID:** `0x00, 0x01`  
+- **Tipo de Dado:** `0x02` (Int16)  
+- **Tamanho dos Dados:** `0x02`  
+- **Dados:** `0x04, 0xD2` (Valor `1234` em bytes)  
+- **Checksum:** `0xDF` (Soma de `ID + Tamanho + Tipo + Dados`)  
+- **Footer:** `0xFF`
 
-| Byte | Valor                                                                                     | Descrição                           |
-|------|-------------------------------------------------------------------------------------------|-------------------------------------|
-| 1    | 0xAA                                                                                      | Header (Início do pacote)           |
-| 2    | 0x01                                                                                      | ID do pacote (por exemplo, 1)       |
-| 3    | 0x12                                                                                      | Tamanho dos dados (18 bytes)        |
-| 4-21 | 0x48 0x65 0x6C 0x6C 0x6F 0x20 0x66 0x72 0x6F 0x6D 0x20 0x41 0x72 0x64 0x75 0x69 0x6E 0x6F | Dados (string "Hello from Arduino") |
-| 22   | 0x77                                                                                      | Checksum                            |
-| 23   | 0xFF                                                                                      | Footer (Final do pacote)            |
+**Bytes Finais:** `AA 00 01 02 02 04 D2 DF FF`
 
-### Explicando o Exemplo
+#### Exemplo 2: Pacote Enviando uma String `"Hello"`
+- **Header:** `0xAA`  
+- **ID:** `0x00, 0x02`  
+- **Tipo de Dado:** `0x05` (String)  
+- **Tamanho dos Dados:** `0x05`  
+- **Dados:** `48 65 6C 6C 6F` (ASCII de `"Hello"`)  
+- **Checksum:** `0x2B`  
+- **Footer:** `0xFF`
 
-1. **Header (`0xAA`)**: Este byte indica o início do pacote. Sempre terá o valor fixo `0xAA` para garantir que o C# saiba que o pacote começou corretamente.
-   
-2. **ID (`0x01`)**: O identificador do pacote. Pode ser usado para distinguir diferentes pacotes ou para sequenciar as mensagens.
-
-3. **Tamanho dos dados (`0x12`)**: Este byte indica que os dados do pacote têm 18 bytes de comprimento. Essa informação ajuda a identificar até onde o conteúdo do pacote se estende.
-
-4. **Dados (Payload)**: A parte principal do pacote contém a string "Hello from Arduino", que é convertida para bytes. O valor "Hello from Arduino" em hexadecimal é:
-   ```
-   48 65 6C 6C 6F 20 66 72 6F 6D 20 41 72 64 75 69 6E 6F
-   ```
-
-5. **Checksum (`0x77`)**: O checksum é calculado somando os valores dos bytes de dados (os 18 bytes de dados neste caso) e gerando um valor único para garantir a integridade. Caso o pacote seja corrompido, o C# pode identificar um erro de checksum.
-
-6. **Footer (`0xFF`)**: O byte `0xFF` no final do pacote indica que o pacote foi corretamente fechado. Ele ajuda a garantir que o C# saiba que o pacote terminou corretamente.
+**Bytes Finais:** `AA 00 02 05 05 48 65 6C 6C 6F 2B FF`
 
 ---
 
@@ -123,8 +126,11 @@ O pacote que estamos enviando e recebendo entre o Arduino e o C# segue uma estru
 | Parte             | Descrição                              | Tamanho (em bytes) | Valor Exemplo              |
 |-------------------|----------------------------------------|--------------------|----------------------------|
 | **Header**        | Início do pacote                       | 1 byte             | `0xAA`                     |
-| **ID**            | Identificador do pacote                | 1 byte             | `0x01`                     |
+| **ID**            | Identificador do pacote                | 2 bytes            | `0x01`                     |
+| **Tipo de Dado**  | Identifica o tipo de dado no payload   | 1 byte             | `0x05` (String)            |
 | **Tamanho Dados** | Tamanho dos dados (payload)            | 1 byte             | `0x12` (18 bytes)          |
-| **Dados**         | Conteúdo real do pacote (string, etc.) | 18 bytes           | `"Hello from Arduino"`     |
+| **Dados**         | Conteúdo real do pacote                | Variável           | `"Hello from Arduino"`     |
 | **Checksum**      | Verificação de integridade             | 1 byte             | `0x77`                     |
 | **Footer**        | Final do pacote                        | 1 byte             | `0xFF`                     |
+
+---
