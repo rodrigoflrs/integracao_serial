@@ -3,14 +3,7 @@ using System.Text;
 
 class Program
 {
-    private const byte CMD_HELLO = 0x01;
-    private const byte CMD_LED = 0x02;
-    private const byte CMD_INT = 0x03;
-    private const byte CMD_BOOL = 0x04;
-    private const byte CMD_FLOAT = 0x05;
-
     private static readonly int _timeout = 10000;
-    private static bool alternarEstado = false;
     private static SerialPort _serialPort;
 
     static void Main()
@@ -20,9 +13,16 @@ class Program
         while (true)
         {
             string opcao = ExibirMenu();
-            if (opcao == "6") break;
+            if (opcao == "2") break;
 
-            ExecutarComando(opcao);
+            try
+            {
+                ProcessarOpcaoMenu(opcao);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Erro: {ex.Message}");
+            }
         }
 
         _serialPort.Close();
@@ -30,7 +30,7 @@ class Program
 
     private static void InicializarPorta()
     {
-        _serialPort = new SerialPort("COM11", 115200); // Alterar nome da porta se necessário
+        _serialPort = new SerialPort("COM13", 115200); // Alterar nome da porta se necessário
         try
         {
             _serialPort.Open();
@@ -44,37 +44,33 @@ class Program
     private static string ExibirMenu()
     {
         Console.WriteLine("\nEscolha uma opção:");
-        Console.WriteLine("1 - Alterar estado do LED");
-        Console.WriteLine("2 - Enviar/Receber string");
-        Console.WriteLine("3 - Enviar/Receber inteiro");
-        Console.WriteLine("4 - Enviar/Receber booleano");
-        Console.WriteLine("5 - Enviar/Receber valor decimal (float)");
-        Console.WriteLine("6 - Sair");
+        Console.WriteLine("1 - Criar pacote de dados");
+        Console.WriteLine("2 - Sair");
 
         return Console.ReadLine() ?? "";
     }
 
-    private static void ExecutarComando(string opcao)
+    private static void ProcessarOpcaoMenu(string opcao)
     {
-        byte comando = opcao switch
+        switch (opcao)
         {
-            "1" => CMD_LED,
-            "2" => CMD_HELLO,
-            "3" => CMD_INT,
-            "4" => CMD_BOOL,
-            "5" => CMD_FLOAT,
-            _ => throw new ArgumentException("Opção inválida.")
-        };
-
-        EnviarComando(comando);
+            case "1":
+                CriarEEnviarPacote();
+                break;
+            default:
+                Console.WriteLine("Opção inválida. Tente novamente.");
+                break;
+        }
     }
 
-    private static void EnviarComando(byte id)
+    private static void CriarEEnviarPacote()
     {
-        object dados = GerarDados(id);
-        var pacote = new PacoteDado(id, dados);
+        ushort id = SolicitarId();
+        var (dado, tipoDado) = SolicitarDado();             // Agora solicitamos o tipo de dado junto com o valor
 
-        Console.WriteLine("Pacote a ser enviado:");
+        var pacote = new PacoteDado(id, tipoDado, dado);    // Passamos o tipo de dado para o construtor
+
+        Console.WriteLine("\nPacote de dados a ser enviado:");
         pacote.ImprimirDetalhes();
 
         EnviarPacote(pacote);
@@ -82,27 +78,50 @@ class Program
         Console.WriteLine($"Resposta do Arduino: {resposta}");
     }
 
-    private static object GerarDados(byte id)
+    private static ushort SolicitarId()
     {
-        if (id == CMD_BOOL)
+        while (true)
         {
-            alternarEstado = !alternarEstado;
-        }
+            Console.WriteLine("Digite o Id:");
+            string input = Console.ReadLine();
 
-        return id switch
+            if (ushort.TryParse(input, out ushort id))
+            {
+                return id;
+            }
+
+            Console.WriteLine("Entrada inválida. Certifique-se de digitar um número entre 0 e 65535.");
+        }
+    }
+
+    private static (object dado, TipoDado tipoDado) SolicitarDado()
+    {
+        Console.WriteLine("Digite o valor a ser enviado:");
+        string input = Console.ReadLine() ?? "";
+
+        if (input.ToLower() is "true" or "false")
         {
-            CMD_LED => "LED",
-            CMD_HELLO => "HELLO",
-            CMD_INT => 12345,
-            CMD_BOOL => alternarEstado,
-            CMD_FLOAT => 3.14159f,
-            _ => "Comando genérico"
-        };
+            bool boolValue = bool.Parse(input.ToLower());
+            return (boolValue, TipoDado.Bool);
+        }
+        else if (int.TryParse(input, out int intValue))
+        {
+            return (intValue, TipoDado.Int32);
+        }
+        else if (float.TryParse(input, out float floatValue))
+        {
+            return (floatValue, TipoDado.Float);
+        }
+        else
+        {
+            return (input, TipoDado.String); // Se for uma string qualquer
+        }
     }
 
     private static void EnviarPacote(PacoteDado pacote)
     {
         byte[] bytesPacote = pacote.ToByteArray();
+        Console.WriteLine($"Bytes enviados: {bytesPacote.Length}");
         _serialPort.Write(bytesPacote, 0, bytesPacote.Length);
     }
 
@@ -119,6 +138,7 @@ class Program
 
                 if (bytesRead >= 5)
                 {
+                    Console.WriteLine($"Bytes recebidos: {bytesRead}");
                     return ProcessarPacote(buffer, bytesRead);
                 }
                 else
@@ -137,13 +157,8 @@ class Program
         {
             var pacote = new PacoteDado(buffer[..bytesRead]);
 
-            Console.WriteLine("Pacote recebido:");
+            Console.WriteLine("\nPacote recebido:");
             pacote.ImprimirDetalhes();
-
-            if (pacote.Header != 0xAA || pacote.Footer != 0xFF)
-            {
-                return "Pacote inválido. Header ou Footer incorretos.";
-            }
 
             return InterpretarResposta(pacote);
         }
@@ -156,36 +171,13 @@ class Program
 
     private static string InterpretarResposta(PacoteDado pacote)
     {
-        return pacote.Id switch
+        return pacote.TipoDado switch
         {
-            CMD_INT => InterpretarInteiro(pacote),
-            CMD_BOOL => InterpretarBooleano(pacote),
-            CMD_FLOAT => InterpretarFloat(pacote),
-            _ => Encoding.ASCII.GetString(pacote.Dados)
+            TipoDado.Int32 => $"Int32 | {BitConverter.ToInt32(pacote.Dados, 0)}",
+            TipoDado.Float => $"Float | {BitConverter.ToSingle(pacote.Dados, 0)}",
+            TipoDado.Bool => $"Bool | {pacote.Dados[0] != 0}",
+            TipoDado.String => $"String | {Encoding.ASCII.GetString(pacote.Dados)}",
+            _ => "Tipo de dado não suportado."
         };
-    }
-
-    private static string InterpretarInteiro(PacoteDado pacote)
-    {
-        return pacote.Dados.Length switch
-        {
-            2 => $"Int recebido: {BitConverter.ToInt16(pacote.Dados, 0)}", // Se for 2 bytes, converte como Int16
-            4 => $"Int recebido: {BitConverter.ToInt32(pacote.Dados, 0)}", // Se for 4 bytes, converte como Int32
-            _ => "Tamanho inválido para INT."
-        };
-    }
-
-    private static string InterpretarBooleano(PacoteDado pacote)
-    {
-        return pacote.Dados.Length == 1
-            ? $"Bool recebido: {BitConverter.ToBoolean(pacote.Dados, 0)}"
-            : "Tamanho inválido para BOOL.";
-    }
-
-    private static string InterpretarFloat(PacoteDado pacote)
-    {
-        return pacote.Dados.Length == 4
-            ? $"Float recebido: {BitConverter.ToSingle(pacote.Dados, 0)}"
-            : "Tamanho inválido para FLOAT.";
     }
 }
