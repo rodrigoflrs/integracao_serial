@@ -54,83 +54,153 @@ Após carregar o código, o Arduino estará pronto para se comunicar com a aplic
 
 ---
 
-## **Estrutura do Pacote**
+## **Protocolo de Comunicação - Estrutura do Pacote**
 
-O pacote enviado e recebido entre o Hardware e o Software segue uma estrutura bem definida para facilitar a comunicação. Essa estrutura é dividida nas seguintes partes, nessa ordem: `Header`, `ID`, `Tipo de dado`, `Tamanho dos dados`, `Dados (payload)`, `Checksum` e `Footer`.
+Pacote de dados utilizado na comunicação entre o hardware e o software, facilitando o envio e recebimento de informações. A estrutura do pacote é composta pelas seguintes partes, nesta ordem: **Header**, **ID**, **Tipo de dado**, **Tamanho dos dados**, **Dados (payload)**, **Checksum** e **Footer**.
 
-### Detalhes da Estrutura:
+## Estrutura do Pacote
 
-1. **Header (Início do pacote)**  
-   - **Tamanho:** 1 byte  
-   - **Valor:** `0xAA` (Valor fixo para identificar o início do pacote)
+### 1. **Header (Início do pacote)**  
+- **Tamanho:** 1 byte  
+- **Valor:** `0xAA`  
+- **Descrição:** Identificador fixo para marcar o início do pacote.
 
-2. **ID**  
-   - **Tamanho:** 2 bytes  
-   - **Valor:** Um número de 0 a 65535 (usado para identificar o tipo de pacote ou a sequência de pacotes)
+### 2. **ID**  
+- **Tamanho:** 2 bytes  
+- **Valor:** Número de 0 a 65535 (identifica o tipo ou sequência de pacotes).  
+  O valor do ID pode ser representado no formato **little-endian**.
 
-3. **Tipo de Dado (Data Type)**  
-   - **Tamanho:** 1 byte  
-   - **Valor:** Um código que identifica o tipo de dado contido no payload. Exemplos:
-     - `0x01`: **Bool**
-     - `0x02`: **Int16**
-     - `0x03`: **Int32**
-     - `0x04`: **Float**
-     - `0x05`: **String**
+### 3. **Tipo de Dado (Data Type)**  
+- **Tamanho:** 1 byte  
+- **Valor:** Código que especifica o tipo de dado presente no payload.  
+  O tipo de dado é baseado no enum `PayloadType`, com os seguintes valores:
+  - `1`: **Int32**
+  - `2`: **Float**
+  - `3`: **Bool**
+  - `4`: **String**
 
-4. **Tamanho dos dados (Data Length)**  
-   - **Tamanho:** 1 byte  
-   - **Valor:** Quantidade de bytes do campo **Dados (Payload)**
+### 4. **Tamanho dos Dados (Data Length)**  
+- **Tamanho:** 1 byte  
+- **Valor:** Quantidade de bytes do campo **Dados (Payload)**.
 
-5. **Dados (Payload)**  
-   - **Tamanho:** Variável (definido pelo campo **Tamanho dos dados**)  
-   - **Valor:** Conteúdo principal do pacote. Pode ser um bool, int, float ou string, conforme indicado pelo campo **Tipo de Dado**.
+### 5. **Dados (Payload)**  
+- **Tamanho:** Variável (definido pelo campo **Tamanho dos dados**)  
+- **Valor:** Conteúdo real do pacote, de acordo com o tipo de dado especificado.
 
-6. **Checksum**  
-   - **Tamanho:** 1 byte  
-   - **Valor:** Soma dos bytes do pacote (excluindo Header e Footer) para validar a integridade.
+### 6. **Checksum**  
+- **Tamanho:** 1 byte  
+- **Valor:** Valor resultante da soma dos bytes do pacote (incluindo o Header, mas não o Footer).  
+  O checksum é calculado utilizando a operação módulo 256 para garantir que o valor caiba em um único byte.
 
-7. **Footer (Fim do pacote)**  
-   - **Tamanho:** 1 byte  
-   - **Valor:** `0xFF` (Valor fixo para identificar o final do pacote)
-
----
-
-### Exemplo de Pacote
-
-#### Exemplo 1: Pacote Enviando um `Int16` com Valor `1234`
-- **Header:** `0xAA`  
-- **ID:** `0x00, 0x01`  
-- **Tipo de Dado:** `0x02` (Int16)  
-- **Tamanho dos Dados:** `0x02`  
-- **Dados:** `0x04, 0xD2` (Valor `1234` em bytes)  
-- **Checksum:** `0xDF` (Soma de `ID + Tamanho + Tipo + Dados`)  
-- **Footer:** `0xFF`
-
-**Bytes Finais:** `AA 00 01 02 02 04 D2 DF FF`
-
-#### Exemplo 2: Pacote Enviando uma String `"Hello"`
-- **Header:** `0xAA`  
-- **ID:** `0x00, 0x02`  
-- **Tipo de Dado:** `0x05` (String)  
-- **Tamanho dos Dados:** `0x05`  
-- **Dados:** `48 65 6C 6C 6F` (ASCII de `"Hello"`)  
-- **Checksum:** `0x2B`  
-- **Footer:** `0xFF`
-
-**Bytes Finais:** `AA 00 02 05 05 48 65 6C 6C 6F 2B FF`
+### 7. **Footer (Fim do pacote)**  
+- **Tamanho:** 1 byte  
+- **Valor:** `0xFF`  
+- **Descrição:** Identificador fixo para marcar o final do pacote.
 
 ---
 
-### Planilha do Protocolo
+## Exemplos de Pacote
 
-| Parte             | Descrição                              | Tamanho (em bytes) | Valor Exemplo              |
-|-------------------|----------------------------------------|--------------------|----------------------------|
-| **Header**        | Início do pacote                       | 1 byte             | `0xAA`                     |
-| **ID**            | Identificador do pacote                | 2 bytes            | `0x01`                     |
-| **Tipo de Dado**  | Identifica o tipo de dado no payload   | 1 byte             | `0x05` (String)            |
-| **Tamanho Dados** | Tamanho dos dados (payload)            | 1 byte             | `0x12` (18 bytes)          |
-| **Dados**         | Conteúdo real do pacote                | Variável           | `"Hello from Arduino"`     |
-| **Checksum**      | Verificação de integridade             | 1 byte             | `0x77`                     |
-| **Footer**        | Final do pacote                        | 1 byte             | `0xFF`                     |
+### Exemplo 1: Envio de um **Int32** com Valor `1234`
+
+- **Header:** `0xAA`  
+- **ID:** `0x01, 0x00` (Representação little-endian de `0x0100`)  
+- **Tipo de Dado:** `0x01` (Int32)  
+- **Tamanho dos Dados:** `0x04` (4 bytes, pois um `Int32` ocupa 4 bytes)  
+- **Dados (Payload):** `0xD2 0x04 0x00 0x00` (Valor `1234` em formato little-endian)  
+- **Checksum:** `0x86` (Cálculo descrito abaixo)  
+- **Footer:** `0xFF`
+
+**Bytes Finais:**  
+`AA 01 00 01 04 D2 04 00 00 86 FF`
+
+#### Cálculo do Checksum para o Exemplo 1:
+
+Para calcular o checksum, somam-se todos os bytes do pacote (incluindo o Header, mas não o Footer), utilizando a operação módulo 256 para garantir que o valor caiba em um único byte:
+
+1. **Header:** `0xAA`  
+2. **ID:** `0x01` e `0x00` → `0x01 + 0x00 = 0x01`
+3. **Tipo de Dado:** `0x01` (1, conforme Tipo de Dado descrito na estrutura do pacote)
+4. **Tamanho dos Dados:** `0x04`
+5. **Dados (Payload):** `0xD2 0x04 0x00 0x00` → `0xD2 + 0x04 + 0x00 + 0x00 = 0xD6`
+
+Soma total dos bytes:
+
+- `0xAA + 0x01 + 0x00 + 0x01 + 0x04 + 0xD2 + 0x04 + 0x00 + 0x00 = 0x186`
+
+Agora, aplica-se o módulo 256 ao resultado em decimal:
+
+- `0x186 para decimal = 390`
+- `390 % 256 = 134`
+
+E por fim convertemos o resultado de volta para HEX:
+
+- `134 para hexadecimal = 86`
+
+Portanto, o **Checksum calculado** é `0x86`.
+
+---
+
+### Exemplo 2: Envio de uma **String** `"Hello"`
+
+- **Header:** `0xAA`  
+- **ID:** `0x01, 0x00` (Representação little-endian de `0x0100`)  
+- **Tipo de Dado:** `0x04` (String)  
+- **Tamanho dos Dados:** `0x05` (5 bytes, pois a string `"Hello"` tem 5 caracteres)  
+- **Dados (Payload):** `0x48 0x65 0x6C 0x6C 0x6F` (Valores ASCII de `"Hello"`)  
+- **Checksum:** `0xA8` (Cálculo descrito abaixo)  
+- **Footer:** `0xFF`
+
+**Bytes Finais:**  
+`AA 01 00 04 05 48 65 6C 6C 6F A8 FF`
+
+#### Cálculo do Checksum para o Exemplo 2:
+
+Para calcular o checksum, somam-se todos os bytes do pacote (incluindo o Header, mas não o Footer), utilizando a operação módulo 256 para garantir que o valor caiba em um único byte:
+
+1. **Header:** `0xAA`  
+2. **ID:** `0x01` e `0x00` → `0x01 + 0x00 = 0x01`
+3. **Tipo de Dado:** `0x04` (String)
+4. **Tamanho dos Dados:** `0x05`
+5. **Dados (Payload):** `0x48 0x65 0x6C 0x6C 0x6F` → `0x48 + 0x65 + 0x6C + 0x6C + 0x6F = 0x1F4`
+
+Soma total dos bytes:
+
+- `0xAA + 0x01 + 0x00 + 0x04 + 0x05 + 0x1F4 = 0x2A8`
+
+Agora, aplica-se o módulo 256 ao resultado em decimal:
+
+- `0x2A8 para decimal = 680`
+- `680 % 256 = 168`
+
+E por fim convertemos o resultado de volta para HEX:
+
+- `168 para hexadecimal = A8`
+
+Portanto, o **Checksum calculado** é `0xA8`.
+
+---
+
+## Planilha do Protocolo
+
+| Parte             | Descrição                              | Tamanho (em bytes) | Valor Exemplo                     |
+|-------------------|----------------------------------------|--------------------|-----------------------------------|
+| **Header**        | Início do pacote                       | 1 byte             | `0xAA`                            |
+| **ID**            | Identificador do pacote                | 2 bytes            | `0x01 0x00`                       |
+| **Tipo de Dado**  | Identifica o tipo de dado no payload   | 1 byte             | `0x01` (Int32)                    |
+| **Tamanho Dados** | Tamanho dos dados (payload)            | 1 byte             | `0x04` (4 bytes, Int32)           |
+| **Dados**         | Conteúdo real do pacote                | Variável           | `0xD2 0x04 0x00 0x00` (1234)      |
+| **Checksum**      | Verificação de integridade             | 1 byte             | `0x86`                            |
+| **Footer**        | Final do pacote                        | 1 byte             | `0xFF`                            |
+
+| Parte             | Descrição                              | Tamanho (em bytes) | Valor Exemplo                     |
+|-------------------|----------------------------------------|--------------------|-----------------------------------|
+| **Header**        | Início do pacote                       | 1 byte             | `0xAA`                            |
+| **ID**            | Identificador do pacote                | 2 bytes            | `0x01 0x00`                       |
+| **Tipo de Dado**  | Identifica o tipo de dado no payload   | 1 byte             | `0x04` (String)                   |
+| **Tamanho Dados** | Tamanho dos dados (payload)            | 1 byte             | `0x05` (5 bytes, String)          |
+| **Dados**         | Conteúdo real do pacote                | Variável           | `0x48 0x65 0x6C 0x6C 0x6F` (Hello)|
+| **Checksum**      | Verificação de integridade             | 1 byte             | `0xA8`                            |
+| **Footer**        | Final do pacote                        | 1 byte             | `0xFF`                            |
 
 ---
