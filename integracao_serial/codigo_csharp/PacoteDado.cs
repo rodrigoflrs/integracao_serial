@@ -14,16 +14,16 @@ class PacoteDado
     public PacoteDado(ushort id, TipoDado tipoDado, object dados)
     {
         Header = 0xAA;
-        Id = id;
+        Id = (ushort)((id >> 8) | ((id & 0xFF) << 8));
         TipoDado = tipoDado;
 
         // Atribuindo os Dados de acordo com o tipo fornecido
         Dados = tipoDado switch
         {
             TipoDado.String => Encoding.ASCII.GetBytes((string)dados),
-            TipoDado.Int32 => BitConverter.GetBytes((int)dados),
-            TipoDado.Bool => new[] { (byte)((bool)dados ? 1 : 0) },
-            TipoDado.Float => BitConverter.GetBytes((float)dados),
+            TipoDado.Int32 => [.. BitConverter.GetBytes((int)dados).Reverse()], // Inverte a ordem dos bytes para Big-Endian
+            TipoDado.Bool => [(byte)((bool)dados ? 1 : 0)],
+            TipoDado.Float => [.. BitConverter.GetBytes((float)dados).Reverse()], // Inverte a ordem dos bytes para Big-Endian
             _ => throw new ArgumentException("Tipo de dado não suportado.")
         };
 
@@ -54,7 +54,7 @@ class PacoteDado
             throw new ArgumentException($"Pacote inválido: Header incorreto (Recebido: {Header:X2}).");
         }
 
-        Id = BitConverter.ToUInt16(pacoteRecebido, 1);
+        Id = (ushort)((pacoteRecebido[1] << 8) | pacoteRecebido[2]);
         TipoDado = (TipoDado)pacoteRecebido[3];
         TamanhoDados = pacoteRecebido[4];
 
@@ -81,9 +81,9 @@ class PacoteDado
     {
         byte sum = Header;
 
-        // Soma os dois bytes do ID (baixo e alto)
-        sum += (byte)(Id & 0xFF);           // Byte menos significativo
+        // Soma os dois bytes do ID (mais significativo e depois o menos significativo para big-endian)
         sum += (byte)((Id >> 8) & 0xFF);    // Byte mais significativo
+        sum += (byte)(Id & 0xFF);           // Byte menos significativo
 
         sum += (byte)TipoDado;              // Tipo de dado (enum convertido para byte)
         sum += TamanhoDados;                // Tamanho dos dados
@@ -102,8 +102,8 @@ class PacoteDado
     {
         byte[] pacote = new byte[7 + Dados.Length];
         pacote[0] = Header;
-        pacote[1] = (byte)(Id & 0xFF);
-        pacote[2] = (byte)((Id >> 8) & 0xFF);
+        pacote[1] = (byte)((Id >> 8) & 0xFF);
+        pacote[2] = (byte)(Id & 0xFF);
         pacote[3] = (byte)TipoDado;
         pacote[4] = TamanhoDados;
         Array.Copy(Dados, 0, pacote, 5, Dados.Length);
@@ -115,7 +115,7 @@ class PacoteDado
     public void ImprimirDetalhes()
     {
         Console.WriteLine($"Header: 0x{Header:X2}");
-        Console.WriteLine($"ID: 0x{Id:X2} (Bytes: 0x{Id & 0xFF:X2} 0x{(Id >> 8) & 0xFF:X2})");
+        Console.WriteLine($"ID: 0x{Id:X4} (Bytes: 0x{Id & 0xFF:X2} 0x{Id >> 8:X2})"); // Exibição Big-Endian
         Console.WriteLine($"Tipo de Dado: {TipoDado}");
         Console.WriteLine($"Tamanho dos Dados: {TamanhoDados}");
         Console.WriteLine($"Dados (Bytes): {(Dados.Length > 0 ? BitConverter.ToString(Dados) : "Nenhum dado")}");
